@@ -35,6 +35,7 @@ class ViewController: UIViewController {
         else {
             newAccount = try! accounts.get(0)
         }
+        
         // let newAccount = try! ks?.newAccount(password)
         
         // Export the newly created account with a different passphrase. The returned
@@ -59,8 +60,11 @@ class ViewController: UIViewController {
         label.font = label.font.withSize(20)
 
         // create transaction
-        let myString = "abc" as NSString
-        let myNSData = myString.data(using: String.Encoding.utf8.rawValue)! as NSData
+        // let myString = "abc" as NSString
+        // let myNSData = myString.data(using: String.Encoding.utf8.rawValue)! as NSData
+        // let signedTrans = signTransaction(ks:ks!, account:newAccount, password:password, data:myNSData)
+        let myString = "abc"
+        let myNSData = myString.data(using: .utf8)!
         let signedTrans = signTransaction(ks:ks!, account:newAccount, password:password, data:myNSData)
         label.text = label.text! + "\n\nsigned transaction: " + signedTrans
         
@@ -120,10 +124,31 @@ class ViewController: UIViewController {
         let originalStr = aesDecryptFromBase64String(base64Input:cipherStr, key:aesKey)
         print ("decrypted text: \((originalStr!))")
 
+        let registerRequestStr = getRegisterRequest(ks:ks!, account:newAccount, password:password, publicKeyPEM:publicKeyPEM)!
+        print("register request: \((registerRequestStr))")
 
         self.view.addSubview(label)
     }
     
+    func getRegisterRequest(ks: GethKeyStore, account: GethAccount, password: String, publicKeyPEM: String!) -> String! {
+        // let myString = publicKeyPEM as NSString
+        // let myNSData = myString.data(using: String.Encoding.utf8.rawValue)! as NSData
+       
+        let data = publicKeyPEM.data(using: .utf8)!
+        let transactionStr = signTransaction(ks: ks, account: account, password: password, data: data)
+        var request: NSMutableDictionary = NSMutableDictionary()
+        request.setValue(transactionStr, forKey:"transaction")
+        request.setValue(account.getAddress().getHex(), forKey:"sender_address")
+        
+        let aesKey = "5978A3C7E8BC4F8CB2D6080C18A5F689"
+        let senderName = "Name"
+        request.setValue(aesEncryptToBase64String(input:senderName, key:aesKey), forKey:"name")
+
+
+        let jsonData = try! JSONSerialization.data(withJSONObject: request, options: JSONSerialization.WritingOptions()) as NSData
+        let jsonString = NSString(data: jsonData as Data, encoding: String.Encoding.utf8.rawValue) as! String
+        return jsonString
+    }
     func MD5HashToBase64(string: String) -> String! {
         let messageData = string.data(using:.utf8)!
         var digestData = Data(count: Int(CC_MD5_DIGEST_LENGTH))
@@ -209,13 +234,13 @@ class ViewController: UIViewController {
     }
     
     // function generateKeyPair()
-    func signTransaction(ks: GethKeyStore, account:GethAccount, password: String, data: NSData) -> String {
+    func signTransaction(ks: GethKeyStore, account:GethAccount, password: String, data: Data) -> String {
         var error: NSError?
         let to    = GethNewAddressFromHex("0x0000000000000000000000000000000000000000", &error)
         // GethTransaction* GethNewTransaction(int64_t nonce, GethAddress* to, GethBigInt* amount, int64_t gasLimit, GethBigInt* gasPrice, NSData* data);
         var gasLimit: Int64
         gasLimit = 0
-        let data = "abc".data(using: .utf8)
+        // let data = "abc".data(using: .utf8)
         let tx    = GethNewTransaction(1, to, GethNewBigInt(0), gasLimit, GethNewBigInt(0), data) // Random empty transaction
         let chain = GethNewBigInt(1) // Chain identifier of the main net
         
