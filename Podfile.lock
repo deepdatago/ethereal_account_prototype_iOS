@@ -1,0 +1,20 @@
+PODS:
+  - Geth (1.8.8)
+  - RNCryptor (5.0.3)
+
+DEPENDENCIES:
+  - Geth (= 1.8.8)
+  - RNCryptor (~> 5.0)
+
+SPEC REPOS:
+  https://github.com/cocoapods/specs.git:
+    - Geth
+    - RNCryptor
+
+SPEC CHECKSUMS:
+  Geth: 483ea44b5f930b72320218290b939ba8e2389aaf
+  RNCryptor: c93d19029dcf7ff160aca0f24d6c9e7b0d82f664
+
+PODFILE CHECKSUM: 45c672e208284347634854111c9cd619d342e30e
+
+COCOAPODS: 1.5.3
