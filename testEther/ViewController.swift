@@ -118,7 +118,7 @@ class ViewController: UIViewController {
         let aesKey = "5978A3C7E8BC4F8CB2D6080C18A5F689"
         print("aesKey: \(aesKey)")
 
-        let cipherStr = aesEncryptToBase64String(input:aesInput, key:aesKey)!
+        let cipherStr = aesEncryptToBase64String(key:aesKey, input:aesInput)!
         print ("cipher text: \((cipherStr))")
 
         let originalStr = aesDecryptFromBase64String(base64Input:cipherStr, key:aesKey)
@@ -126,7 +126,20 @@ class ViewController: UIViewController {
 
         let registerRequestStr = getRegisterRequest(ks:ks!, account:newAccount, password:password, publicKeyPEM:publicKeyPEM)!
         print("register request: \((registerRequestStr))")
+        
+        // create friend request:
+        let friendAccountAddress = "0xf021a64E5227A786AC2ed1A605Dcd3dD5B63A29b"
+        let friendPublicKeyPEM = "-----BEGIN RSA PUBLIC KEY-----\nMIIBCgKCAQEA1pwLugBWGMqU6xJCs6p40VT5MrsWcOPXEcd/sRQpPcQ/reg1aWdNlQoN7I8VHpDsmnTvOQCbe0rowHEXVaJ0tRi8x7bjL6dBXVg+58oTLKG6vbyxTQNfPd7LWW6CBgR5G2FfNWs1LRgRIOLLPff5bcHHo/fp5lZMZIKlCwKIsyzfa5r4PiEJALKV5chse+LWXGeP11LM4ROUk5fvBDijdqI2B+btO1rqNOmU6QdO5eAxU3Cq2by+4Qms6v/DEQrPuIJMSHTxU4Q9cda1qq9yhhoaaG7ZSRQQajYr3aupsXlF6EPViWL2Smc9nyXcqalKsZ0jzivvcsCKYgFvAsFS3wIDAQAB\n-----END RSA PUBLIC KEY----- "
+        
+        let friendRequestStr = getFriendRequest(ks: ks!, fromAccount: newAccount, toAccountAddress: friendAccountAddress, toAccountPublicKeyPEM: friendPublicKeyPEM, password: password, friendKey: aesKey, allFriendsKey: aesKey)!
+        print("friend request: \((friendRequestStr))")
 
+        // approve friend request:
+        // approveFriendRequest
+        // let friendAccountAddress = "0xf021a64E5227A786AC2ed1A605Dcd3dD5B63A29b"
+        
+        let approveRequestStr = approveFriendRequest(ks: ks!, fromAccount: newAccount, requestAddress: friendAccountAddress, password: password, mutualKey: aesKey, allFriendsKey: aesKey)!
+        print("approve request: \((approveRequestStr))")
         self.view.addSubview(label)
     }
     
@@ -142,13 +155,67 @@ class ViewController: UIViewController {
         
         let aesKey = "5978A3C7E8BC4F8CB2D6080C18A5F689"
         let senderName = "Name"
-        request.setValue(aesEncryptToBase64String(input:senderName, key:aesKey), forKey:"name")
+        request.setValue(aesEncryptToBase64String(key:aesKey, input:senderName), forKey:"name")
 
 
         let jsonData = try! JSONSerialization.data(withJSONObject: request, options: JSONSerialization.WritingOptions()) as NSData
         let jsonString = NSString(data: jsonData as Data, encoding: String.Encoding.utf8.rawValue) as! String
         return jsonString
     }
+    
+    func publicKeyEncryptToBase64(publicKeyPEM:String!, input:String) -> String! {
+        let publicKeyTag = "publicKey_" + MD5HashToBase64(string:publicKeyPEM)
+        try! RSAUtils.addRSAPublicKey(publicKeyPEM, tagName: publicKeyTag)
+        let publicKeyEncryptedData = RSAUtils.encryptWithRSAKey(str: input, tagName: publicKeyTag)
+        return publicKeyEncryptedData?.base64EncodedString()
+
+
+    }
+    
+    func getFriendRequest(ks: GethKeyStore, fromAccount: GethAccount, toAccountAddress:String!, toAccountPublicKeyPEM:String!, password: String, friendKey:String!, allFriendsKey:String!) -> String! {
+        
+        var keysRequest: NSMutableDictionary = NSMutableDictionary()
+        keysRequest.setValue(friendKey, forKey:"friend_request_symmetric_key")
+        keysRequest.setValue(allFriendsKey, forKey:"all_friends_symmetric_key")
+        let keysRequestData = try! JSONSerialization.data(withJSONObject: keysRequest, options: JSONSerialization.WritingOptions()) as NSData
+        let keysRequestString = NSString(data: keysRequestData as Data, encoding: String.Encoding.utf8.rawValue) as! String
+        let encryptedKeysStr = publicKeyEncryptToBase64(publicKeyPEM: toAccountPublicKeyPEM!, input: keysRequestString)!
+        let encrpytedKeyStrData = encryptedKeysStr.data(using: .utf8)!
+        let transactionStr = signTransaction(ks: ks, account: fromAccount, password: password, data: encrpytedKeyStrData)
+
+        var friendRequest: NSMutableDictionary = NSMutableDictionary()
+        friendRequest.setValue(0, forKey:"action_type")
+        friendRequest.setValue(toAccountAddress, forKey:"to_address")
+        friendRequest.setValue(fromAccount.getAddress().getHex(), forKey:"from_address")
+        friendRequest.setValue(transactionStr, forKey:"request")
+        let friendRequestData = try! JSONSerialization.data(withJSONObject: friendRequest, options: JSONSerialization.WritingOptions()) as NSData
+        let friendRequestDataString = NSString(data: friendRequestData as Data, encoding: String.Encoding.utf8.rawValue) as! String
+        return friendRequestDataString
+
+    }
+    
+    func approveFriendRequest(ks: GethKeyStore, fromAccount: GethAccount, requestAddress:String!, password: String, mutualKey:String!, allFriendsKey:String!) -> String! {
+        
+        var keysRequest: NSMutableDictionary = NSMutableDictionary()
+        keysRequest.setValue(allFriendsKey, forKey:"all_friends_symmetric_key")
+        let keysRequestData = try! JSONSerialization.data(withJSONObject: keysRequest, options: JSONSerialization.WritingOptions()) as NSData
+        let keysRequestString = NSString(data: keysRequestData as Data, encoding: String.Encoding.utf8.rawValue) as! String
+        let encryptedKeysStr = aesEncryptToBase64String(key: mutualKey, input: keysRequestString)!
+        let encrpytedKeyStrData = encryptedKeysStr.data(using: .utf8)!
+        let transactionStr = signTransaction(ks: ks, account: fromAccount, password: password, data: encrpytedKeyStrData)
+        
+        var friendRequest: NSMutableDictionary = NSMutableDictionary()
+        friendRequest.setValue(1, forKey:"action_type")
+        friendRequest.setValue(fromAccount.getAddress().getHex(), forKey:"to_address")
+        friendRequest.setValue(requestAddress, forKey:"from_address")
+        friendRequest.setValue(transactionStr, forKey:"request")
+        let approveRequestData = try! JSONSerialization.data(withJSONObject: friendRequest, options: JSONSerialization.WritingOptions()) as NSData
+        let approveRequestDataString = NSString(data: approveRequestData as Data, encoding: String.Encoding.utf8.rawValue) as! String
+        return approveRequestDataString
+        
+    }
+
+
     func MD5HashToBase64(string: String) -> String! {
         let messageData = string.data(using:.utf8)!
         var digestData = Data(count: Int(CC_MD5_DIGEST_LENGTH))
@@ -251,7 +318,7 @@ class ViewController: UIViewController {
         return signedTrans
     }
 
-    func aesEncryptToBase64String(input:String, key:String) -> String? {
+    func aesEncryptToBase64String(key:String, input:String) -> String? {
         let inputData = input.data(using: .utf8)!
         let keyData = key.data(using: .utf8)!
         return aesCBCEncrypt(data:inputData, keyData:keyData)!.base64EncodedString()
