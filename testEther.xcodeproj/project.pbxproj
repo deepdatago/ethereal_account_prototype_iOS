@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		074EC8CF2142ABD200567508 /* CryptoExportImportManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 074EC8CE2142ABD200567508 /* CryptoExportImportManager.swift */; };
 		07EFE88A20BCC74200077E72 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07EFE88920BCC74200077E72 /* AppDelegate.swift */; };
 		07EFE88C20BCC74200077E72 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07EFE88B20BCC74200077E72 /* ViewController.swift */; };
 		07EFE88F20BCC74200077E72 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 07EFE88D20BCC74200077E72 /* Main.storyboard */; };
@@ -38,6 +39,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		074EC8CE2142ABD200567508 /* CryptoExportImportManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CryptoExportImportManager.swift; sourceTree = "<group>"; };
 		07EFE88620BCC74200077E72 /* testEther.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = testEther.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		07EFE88920BCC74200077E72 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		07EFE88B20BCC74200077E72 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -116,6 +118,7 @@
 		07EFE88820BCC74200077E72 /* testEther */ = {
 			isa = PBXGroup;
 			children = (
+				074EC8CE2142ABD200567508 /* CryptoExportImportManager.swift */,
 				07FF939820C1010100543357 /* RSAUtils */,
 				07EFE88920BCC74200077E72 /* AppDelegate.swift */,
 				07EFE88B20BCC74200077E72 /* ViewController.swift */,
@@ -389,6 +392,7 @@
 				07EFE88C20BCC74200077E72 /* ViewController.swift in Sources */,
 				07FF93A120C1010100543357 /* RSAUtils.swift in Sources */,
 				07EFE88A20BCC74200077E72 /* AppDelegate.swift in Sources */,
+				074EC8CF2142ABD200567508 /* CryptoExportImportManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

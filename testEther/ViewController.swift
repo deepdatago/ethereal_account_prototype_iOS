@@ -253,7 +253,7 @@ class ViewController: UIViewController {
         
         var keyPairAttr = [NSObject: NSObject]()
         keyPairAttr[kSecAttrKeyType] = kSecAttrKeyTypeRSA
-        keyPairAttr[kSecAttrKeySizeInBits] = 2048 as NSObject
+        keyPairAttr[kSecAttrKeySizeInBits] = 4096 as NSObject
         keyPairAttr[kSecPublicKeyAttrs] = publicKeyAttr as NSObject
         keyPairAttr[kSecPrivateKeyAttrs] = privateKeyAttr as NSObject
         
@@ -277,6 +277,9 @@ class ViewController: UIViewController {
                     // let publicKeyStr = publicKey.base64EncodedString()
                     finalPubKeyStr = finalPubKeyStr + "\n-----END RSA PUBLIC KEY-----"
                     print("Public Key: \((finalPubKeyStr))")
+                    let cryptoImportExportManager = CryptoExportImportManager()
+                    finalPubKeyStr = cryptoImportExportManager.exportRSAPublicKeyToPEM(publicKey, keyType: kSecAttrKeyTypeRSA as String, keySize: 4096)
+                    print(finalPubKeyStr)
                 }
             }
             
