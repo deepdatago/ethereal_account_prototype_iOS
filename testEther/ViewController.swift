@@ -11,6 +11,12 @@ import Geth
 import Security
 import RNCryptor
 
+let PUBLIC_KEY_TAG = "com.deepdatago.publicKeyTag";
+let PRIVATE_KEY_TAG = "com.deepdatago.privateKeyTag";
+let PUBLIC_KEY_TAG_EXPORT = "com.deepdatago.publicKeyTag.export";
+let kPublicPrivateKeySize = 4096
+
+
 class ViewController: UIViewController {
     // properties
 
@@ -71,7 +77,8 @@ class ViewController: UIViewController {
         var publicKeyPEM: String!
         var privateKeyPEM: String!
         
-        (publicKeyPEM, privateKeyPEM) = generateKeyPairPEM()
+        // (publicKeyPEM, privateKeyPEM) = generateKeyPairPEM()
+        generateKeyPairPEM()
         
 
         // load public/private key from string
@@ -79,22 +86,22 @@ class ViewController: UIViewController {
         // var privateKeyFromStr: SecKey?
 
         // addRSAPublicKey(_ pubkeyBase64: String, tagName: String)
-        var publicKeyTagName: String! // concatenate with hash of key
-        var privateKeyTagName: String! // concatenate with hash of key
-        (publicKeyTagName, privateKeyTagName) = generateKeyTagsFromKeyPEM(publicKeyPEM: publicKeyPEM, privateKeyPEM: privateKeyPEM)
+        // var publicKeyTagName: String! // concatenate with hash of key
+        // var privateKeyTagName: String! // concatenate with hash of key
+        // (publicKeyTagName, privateKeyTagName) = generateKeyTagsFromKeyPEM(publicKeyPEM: publicKeyPEM, privateKeyPEM: privateKeyPEM)
         // publicKeyFromStr = try! RSAUtils.addRSAPublicKey(publicKeyPEM, tagName: publicKeyTagName)
         // privateKeyFromStr = try! RSAUtils.addRSAPrivateKey(privateKeyPEM, tagName: privateKeyTagName)
         
         let input = "Hello World"
         
         // let encodedData = RSAUtils.encryptWithRSAKey(data, rsaKeyRef:publicKey!, padding: SecPadding.PKCS1)
-        let encryptedData = RSAUtils.encryptWithRSAKey(str: input, tagName: publicKeyTagName)
+        let encryptedData = RSAUtils.encryptWithRSAKey(str: input, tagName: PUBLIC_KEY_TAG)
         let encryptedStr = encryptedData?.base64EncodedString()
         // let encodedStr = String(data: encodedData!, encoding: String.Encoding.utf8) as String!
         print ("encoded str: \((encryptedStr!))")
 
         let decodedData = Data(base64Encoded: encryptedStr!)
-        let decryptedData = RSAUtils.decryptWithRSAKey(encryptedData: decodedData!, tagName: privateKeyTagName)
+        let decryptedData = RSAUtils.decryptWithRSAKey(encryptedData: decodedData!, tagName: PRIVATE_KEY_TAG)
         var backToString2 = String(data: decryptedData!, encoding: String.Encoding.utf8) as String!
         NSLog("decrypted string: \((backToString2!))")
 
@@ -124,6 +131,10 @@ class ViewController: UIViewController {
         let originalStr = aesDecryptFromBase64String(base64Input:cipherStr, key:aesKey)
         print ("decrypted text: \((originalStr!))")
 
+        let publicKeyData = getKeyDataByTag(tag: PUBLIC_KEY_TAG)
+        let cryptoImportExportManager = CryptoExportImportManager()
+        publicKeyPEM = cryptoImportExportManager.exportRSAPublicKeyToPEM(publicKeyData!, keyType: kSecAttrKeyTypeRSA as String, keySize: kPublicPrivateKeySize)
+
         let registerRequestStr = getRegisterRequest(ks:ks!, account:newAccount, password:password, publicKeyPEM:publicKeyPEM)!
         print("register request: \((registerRequestStr))")
         
@@ -140,6 +151,11 @@ class ViewController: UIViewController {
         
         let approveRequestStr = approveFriendRequest(ks: ks!, fromAccount: newAccount, requestAddress: friendAccountAddress, password: password, mutualKey: aesKey, allFriendsKey: aesKey)!
         print("approve request: \((approveRequestStr))")
+        
+        let signature = signString(input: "1523765429", privateKeyTag: PRIVATE_KEY_TAG)
+        print("signature: " + signature)
+        
+        print("public key: " + publicKeyPEM)
         self.view.addSubview(label)
     }
     
@@ -228,15 +244,71 @@ class ViewController: UIViewController {
         return digestData.base64EncodedString()
     }
     
+    func signString(input: String, privateKeyTag: String) -> String {
+        let inputData = (input as String).data(using: String.Encoding.utf8)!
+
+        var keyRef: AnyObject?
+        let query: Dictionary<String, AnyObject> = [
+            String(kSecAttrKeyType): kSecAttrKeyTypeRSA,
+            String(kSecReturnRef): kCFBooleanTrue as CFBoolean,
+            String(kSecClass): kSecClassKey as CFString,
+            String(kSecAttrApplicationTag): privateKeyTag as CFString,
+            ]
+        
+        let status = SecItemCopyMatching(query as CFDictionary, &keyRef)
+        var key : SecKey?
+        
+        switch status {
+        case noErr:
+            if let ref = keyRef {
+                key = (ref as! SecKey)
+                // return (ref as! SecKey)
+            }
+        default:
+            break
+        }
+        
+        let hash = NSMutableData(length: Int(CC_SHA256_DIGEST_LENGTH))!
+        // Create SHA256 hash of the message
+        CC_SHA256((inputData as NSData).bytes, CC_LONG(inputData.count), hash.mutableBytes.assumingMemoryBound(to: UInt8.self))
+        
+        // Sign the hash with the private key
+        let blockSize = SecKeyGetBlockSize(key!)
+        
+        let hashDataLength = Int(hash.length)
+        let hashData = hash.bytes.bindMemory(to: UInt8.self, capacity: hash.length)
+        
+        if let result = NSMutableData(length: Int(blockSize)) {
+            let encryptedData = result.mutableBytes.assumingMemoryBound(to: UInt8.self)
+            var encryptedDataLength = blockSize
+            
+            let status = SecKeyRawSign(key!, .PKCS1SHA256, hashData, hashDataLength, encryptedData, &encryptedDataLength)
+            
+            if status == noErr {
+                // Create Base64 string of the result
+                result.length = encryptedDataLength
+                print(result.base64EncodedString(options: NSData.Base64EncodingOptions(rawValue: 0)))
+                // return result as Data
+            }
+        }
+        
+        return ""
+    }
+    
     func generateKeyTagsFromKeyPEM(publicKeyPEM: String, privateKeyPEM:String) -> (String!, String!) {
-        let publicKeyTagName = "publicKeyTag_" + MD5HashToBase64(string: publicKeyPEM) // concatenate with hash of key
-        let privateKeyTagName = "privateKeyTag_" + MD5HashToBase64(string: privateKeyPEM)// concatenate with hash of key
+        // let publicKeyTagName = "publicKeyTag_" + MD5HashToBase64(string: publicKeyPEM) // concatenate with hash of key
+        // let privateKeyTagName = "privateKeyTag_" + MD5HashToBase64(string: privateKeyPEM)// concatenate with hash of key
+        let publicKeyTagName = "com.deepdatago.publicKeyTag"
+        let privateKeyTagName = "com.deepdatago.privateKeyTag"
         try! RSAUtils.addRSAPublicKey(publicKeyPEM, tagName: publicKeyTagName)
         try! RSAUtils.addRSAPrivateKey(privateKeyPEM, tagName: privateKeyTagName)
         return (publicKeyTagName, privateKeyTagName)
 
     }
-    func generateKeyPairPEM() -> (String!, String!) {
+    
+    // func generateKeyPairPEM() -> (String!, String!) {
+    func generateKeyPairPEM() -> Void {
+        /*
         var statusCode: OSStatus?
         var publicKey: SecKey?
         var privateKey: SecKey?
@@ -296,6 +368,181 @@ class ViewController: UIViewController {
             print("Error generating key pair: \(String(describing: statusCode))")
         }
         return (finalPubKeyStr, finalPrivateKeyStr)
+        */
+        
+        var statusCode: OSStatus?
+        var publicKey: SecKey?
+        var privateKey: SecKey?
+        /*
+        let publicKeyAttr: [NSObject: NSObject] = [
+            kSecAttrIsPermanent:true as NSObject,
+            kSecAttrApplicationTag:PUBLIC_KEY_TAG.data(using: String.Encoding.utf8)! as NSObject,
+            kSecClass: kSecClassKey, // added this value
+            kSecReturnData: kCFBooleanTrue] // added this value
+        let privateKeyAttr: [NSObject: NSObject] = [
+            kSecAttrIsPermanent:true as NSObject,
+            kSecAttrApplicationTag:PRIVATE_KEY_TAG.data(using: String.Encoding.utf8)! as NSObject,
+            kSecClass: kSecClassKey, // added this value
+            kSecReturnData: kCFBooleanTrue] // added this value
+ 
+
+        var keyPairAttr = [NSObject: NSObject]()
+        keyPairAttr[kSecAttrKeyType] = kSecAttrKeyTypeRSA
+        keyPairAttr[kSecAttrKeySizeInBits] = kPublicPrivateKeySize as NSObject
+        keyPairAttr[kSecPublicKeyAttrs] = publicKeyAttr as NSObject
+        keyPairAttr[kSecPrivateKeyAttrs] = privateKeyAttr as NSObject
+        */
+        let privateAttributes = [String(kSecAttrIsPermanent): true,
+                                 String(kSecAttrApplicationTag): PRIVATE_KEY_TAG] as [String : Any]
+        let publicAttributes = [String(kSecAttrIsPermanent): true,
+                                String(kSecAttrApplicationTag): PUBLIC_KEY_TAG] as [String : Any]
+        
+        let pairAttributes = [String(kSecAttrKeyType): kSecAttrKeyTypeRSA,
+                              String(kSecAttrKeySizeInBits): kPublicPrivateKeySize,
+                              String(kSecPublicKeyAttrs): publicAttributes,
+                              String(kSecPrivateKeyAttrs): privateAttributes] as [String : Any]
+
+
+        statusCode = SecKeyGeneratePair(pairAttributes as CFDictionary, &publicKey, &privateKey)
+        var finalPubKeyStr: String!
+        var finalPubKeyStrToExport: String!
+        var finalPrivateKeyStr: String!
+        
+        if statusCode == noErr && publicKey != nil && privateKey != nil {
+            return ()
+            /*
+            print("Key pair generated OK")
+            var resultPublicKey: AnyObject?
+            var resultPrivateKey: AnyObject?
+            let statusPublicKey = SecItemCopyMatching(publicAttributes as CFDictionary, &resultPublicKey)
+            let statusPrivateKey = SecItemCopyMatching(privateAttributes as CFDictionary, &resultPrivateKey)
+            
+            let cryptoImportExportManager = CryptoExportImportManager()
+            if statusPublicKey == noErr {
+                if let publicKey2 = resultPublicKey as? Data {
+                    /*
+                    finalPubKeyStr = "-----BEGIN RSA PUBLIC KEY-----\n"
+                    finalPubKeyStr = finalPubKeyStr + publicKey2.base64EncodedString()
+                    
+                    // print("Public Key: \((publicKey.base64EncodedString()))")
+                    // let publicKeyStr = publicKey.base64EncodedString()
+                    finalPubKeyStr = finalPubKeyStr + "\n-----END RSA PUBLIC KEY-----"
+                    */
+                    
+                    finalPubKeyStr = cryptoImportExportManager.exportRSAPublicKeyToPEM(publicKey2, keyType: kSecAttrKeyTypeRSA as String, keySize: kPublicPrivateKeySize)
+                    // print("Public Key: \((finalPubKeyStr))")
+                }
+                return ()
+            }
+            
+            if statusPrivateKey == noErr {
+                if let privateKey2 = resultPrivateKey as? Data {
+                    // print("Private Key: \((privateKey.base64EncodedString()))")
+                    // finalPrivateKeyStr = CryptoManager.formatPrivateKeyPEM(key:privateKey.base64EncodedString())
+                    /*
+                    finalPrivateKeyStr = "-----BEGIN RSA PRIVATE KEY-----\n"
+                    finalPrivateKeyStr = finalPrivateKeyStr + privateKey2.base64EncodedString()
+                    finalPrivateKeyStr = finalPrivateKeyStr + "\n-----END RSA PRIVATE KEY-----"
+                    */
+
+                }
+            }
+            */
+        } else {
+            print("Error generating key pair: \(String(describing: statusCode))")
+            // return false;
+        }
+        
+        /*
+        let rsa = CkoRsa()!
+        // let importSuccess = rsa.importPrivateKey("")
+        let importSuccess = rsa.importPrivateKey("<RSAKeyValue><Modulus>xYPYRsiEGWryhzdu5A02uBHAPc8o9d3Scq76g4Qy1DVyDitM+J7q2uaI6Mn3VaO4Y/dq+XdN9SJ4YXQggFWQeonuFmFP81y9r2nZ2IP1PYATPHulAJR8+jSh/gnDag+doJWPL5KOxbMaLMLWftUcn7qzui+teWpEraGatZDzNHcEq8/lj5ETCpsMXBwIa9IqhMk3Y6/Osc43aiSgUuDkH2CJOL2oKfJGfgU1C32Au58pCqpaNXHwWrisgBmCWadEne7xBNbKeWquub7wgrFSS6UXTSfOcwMXzheODq1v+IVGnyg9z6kyQ1lcaUDjEzZ5nXfwyDEYXmwY856C1tpZ5Prc0SOv1OgWORLOYCpUP04w9ok3VBMfhdZZ5mRbf5+Im1doF6y94CDh5x+OO105cg/w8Cm9m6jzY6iVbLFXnjWGRIAPYGhBFxw9DqflXkPH6XXn6J2eNKGHc2Z26tF/igyjgVqXHkFN6KmNJ2iNnFpun+QeQCDhbiSxtunvMrHnyGH37e//W5JWymc8lEbDi1ASGzl6sflyMhfrl/rnkpMrraovnmtfri6PW2CMjaT0RixYF0dFPoKLsC8jODIXvUtjNTEciVkv0T7GhguXLubj0tBOj3Zce8bGOvjbzkpwiSGynqyF9770WMcH+xnQKrKcOTLjXLgmW1wZJ1/71rk=</Modulus><Exponent>AQAB</Exponent><P>9Ue7TQZbsXL5OF08+IFqa7ydXrBaeiq/L5Igde0Mk13DWJDqV6g/h0iMrd4o99VFMPGUrtzWJhfWkZ3OAsdfEOKCTlU1iMyZOJIVfJI+8V9nUXreIRWt5+mr+EmubZBw5nCCwXMs7Ivvmd5n0KNnj4gGgJwWg+cXF9cCcG3i/JV59SX8HO5PvKahAJUH7+mRKriglaEM8QXlxhP7FUqix+vsYQyKtkt856rGyZVKy7d1MUKTct/BDNlArEhV5pK9hqmkXbCgfHG9jr9bVh+j3JujyusJtX+AzbZ0Hd+EK+bH97UH5RQeGCbCif7x+CSwQzVueXqiNXC0HRCQjTdUgQ==</P><Q>ziWztz+xbLs/J1I4Xx4G2FIN9VFM0tnjMTupsvkJ09eHCgkgdtHTDCOYtTL1VO3bfoo6ylF40xMgQ9ixDZdecHU0MCvU0yrE2W7ElEmH4L491ivJT90l5GDIsRVMP+dXI4TVF5er3rqUDXgR/2EMxm/yntl8qSy63FEra5XOKmNeqttRzd/V48AAoE9Ed3nisboZ+SXcuehai8B7uoOuQQdlB4cKuKuCoulVVdJkvK3WWCcxDPfhzJ7KuwKefXUcpl9ouCCnmk41EdzoQqGYDj8x9EdH6gdI2g7rVTh5d+xXVOPgcxMwSTh09sUWxgIXDnk57QGQtNDqeukEny8GOQ==</Q><DP>iLINZIPiniZhVlRAIo6dbKWVXqwSAHvKSQy7In2VwJtEvxskPu35Wb/JBy0Ez/n/saMxJbLVdi1a25SCt3G9PX++90DtsOu1iJ2BdAddJM/ymKpNGUsnvFOyD5GgsFcLVKHnfUBfDQV/5tTYLqKimI9KcGqM8b3cVODy7w2Orw3vBfzBYK4/qfeDSvvDjKUyzghPFpTGzZxnzdhc2iTaS2jkN8HxnF69oa6/UqDtKlN38JgV7LNet3ZsYJd/qBynm2D3xW8mQbRx3BgxIvJHNC9ZPUF4C7qfYgYI+I0U8BKR5y7w024+x17ylE2NNKndwdcJVpJNzFKfToNozArGAQ==</DP><DQ>zduedL8ZCZCPB1A21N1iToDaSYDPa7uEAfUniH7iznZq9p2Ymq77xyKA62mgzhfc2admAAWN15JA5R+t5vmiqECSRgxvMhSCkPLpQX+QPeEcVRRSqvsXTNFNeHDhPOti/Cg4t5+RVRESqcSejFy46ix+pxxePX5ad4pjBsOJJpEmxw3OyfzdVdq1hWDC6WCA/aPvLfseSVP7n5UuuVmoGG4u+G5lSXaUNOU3f0VjrXsXEd7JP78F8FUd89Qwuu3JF2ctZrnNRO0WV+k20tsVwhxfYSYRbWWq3X6KiQalXhlYOIB68c9Wp7fGLWsxS7hol9589u1aOQZrMSQipmfKGQ==</DQ><InverseQ>jiEsExdPV7wTZ0yfhHnv6lkR6yH3qbz+8q+/q3cmKsD0gH1AN+eQPAGeb8cYlKFG8cyNeALqfwBvaqllKO7BERW9nvpqtmZf0A4XPtAV1ntzRRlZsinTPA+xyu/r6Iu8zMi8sITlwZMRa0TGawWvHPokEtRgqp/Oq3DkZvAsMBLLjVxu9kFWkYooZ3wH70fcvF81RrFKHlI18ME0XZW/uai4RHQI63N69CXMZre294Verqx2EAFeZvwguY2U0ax9U7VvVFwaGsV7DWbYhw1Be3UFJh+2lu0Aacsuh+h5Kdzc7Kqn+VVcUy1VEhqWcCvaZB6xzxGEr/hGhDykZab94g==</InverseQ><D>BFR/X4/iS39beUjnErNSdYcYGJLL0lYOWMrKvarehWX1jed3nMS5H9rpefcBh9xavMBOFVF/AUaD7pkB5GZb0D/pWw6/lrV8CBYxOyyrafF+mncYdzKKKd8RBRV4NgFJIp3cwX18SUvDoWMVGjs4US0h5w1IB48jmc3e6yeWGVqZnN2mKfdTfEpJY1SO/7QgEACsSPBv/thnQRmz9RUukxyF7ZtEzkScNIOPNeUGtzZGS1BQQXcxvn9pcrZ8c9Q1riOwn3tI/Y/v7C0KL0dNZ1CjeeLLRRy2fyNnjx1QxNlBItiaQEz0h+Lz4m/UepWZZXEdc3oWD23dvyuEsUqgqVlMBRHsuv9LaYaDwUCky5aPyWfNeS/vo3hufaj1Cj08oFv5j3Eo+d7ly71C3eoAOgj8EF8miRcadP5M4YdDpYN1uNHCadMDo72cc8ey42HPyocPqardx/XszCXfmjlj/SYbZNgM9/HeOCHsCnK7YQf2BPJvQzlmEsxCm6FVPiYKVnHBYyEyAr1+1xoAEfVM8T6s6gzb+6JzBJAj7it4doYd9bHPhqfn8JoyNiEKup7UKJz9Tg3GsqCqiFSEQnpIQWGnNtVgWTooYzBC+2lylMzfMpMXNCjbTvgch/N/Bzo73bfZBDUFzT86t3vHng7R4BaeJqxAf7tejh/blFQyrQE=</D></RSAKeyValue>")
+        // let binarySignature = rsa.SignString("1523765429", hashAlg: "SHA256")
+        // print(binarySignature)
+        var success: Bool = rsa.unlockComponent("30-day trial")
+        let binarySignature = rsa.sign("1523765429", hashAlg: "SHA256")
+        print(binarySignature?.base64EncodedString())
+        // rsa.encodingMode = "hex"
+        // let binarySignature = rsa.signStringENC("1523765429", hashAlg: "sha-1")
+        // let binarySignature = rsa.openSslSign("1523765429")
+        // print(binarySignature!)
+        // var binarySignature: NSData
+        // var plaintext: String? = "this is the text to be signed"
+        // binarySignature = rsa.SignString(plaintext, hashAlg: "SHA256") as! NSData
+        */
+
+        /*
+        var heimdall: Heimdall
+        heimdall = Heimdall(tagPrefix: "com.hnormak.heimdall.private.tests", keySize: 4096)!
+        heimdall.regenerate(4096)
+        let cryptoImportExportManager = CryptoExportImportManager()
+        let finalPubKeyStr2 = cryptoImportExportManager.exportRSAPublicKeyToPEM(heimdall.publicKeyData()!, keyType: kSecAttrKeyTypeRSA as String, keySize: 4096)
+
+        print("public key: " + finalPubKeyStr2)
+    
+        // get private key
+        var keyRef: AnyObject?
+        let query: Dictionary<String, AnyObject> = [
+            String(kSecAttrKeyType): kSecAttrKeyTypeRSA,
+            String(kSecReturnData): kCFBooleanTrue as CFBoolean,
+            String(kSecClass): kSecClassKey as CFString,
+            String(kSecAttrApplicationTag): "com.hnormak.heimdall.private.tests.private" as CFString,
+            ]
+    
+        let result: Data?
+    
+        switch SecItemCopyMatching(query as CFDictionary, &keyRef) {
+        case noErr:
+            result = keyRef as? Data
+        default:
+            result = nil
+        }
+        print("private key: " + (result?.base64EncodedString())!)
+
+        print("signed string: " + heimdall.sign("1523765429")!)
+        */
+        
+        /*
+        try! RSAUtils.addRSAPublicKey(finalPubKeyStr, tagName: PUBLIC_KEY_TAG)
+        try! RSAUtils.addRSAPrivateKey(finalPrivateKeyStr, tagName: PRIVATE_KEY_TAG)
+        // try! RSAUtils.addRSAPublicKey(finalPubKeyStrToExport, tagName: PUBLIC_KEY_TAG_EXPORT as String)
+        let input = "Hello World"
+        
+        // let encodedData = RSAUtils.encryptWithRSAKey(data, rsaKeyRef:publicKey!, padding: SecPadding.PKCS1)
+        let encryptedData = RSAUtils.encryptWithRSAKey(str: input, tagName: PUBLIC_KEY_TAG)
+        let encryptedStr = encryptedData?.base64EncodedString()
+        // let encodedStr = String(data: encodedData!, encoding: String.Encoding.utf8) as String!
+        print ("encoded str: \((encryptedStr!))")
+        
+        let decodedData = Data(base64Encoded: encryptedStr!)
+        let decryptedData = RSAUtils.decryptWithRSAKey(encryptedData: decodedData!, tagName: PRIVATE_KEY_TAG)
+        var backToString2 = String(data: decryptedData!, encoding: String.Encoding.utf8) as String!
+        NSLog("decrypted string: \((backToString2!))")
+
+        // return (finalPubKeyStr, finalPrivateKeyStr)
+        */
+        return ()
+    }
+    
+    func getKeyDataByTag(tag: String) -> Data? {
+        // get private key
+        var keyRef: AnyObject?
+        let query: Dictionary<String, AnyObject> = [
+            String(kSecAttrKeyType): kSecAttrKeyTypeRSA,
+            String(kSecReturnData): kCFBooleanTrue as CFBoolean,
+            String(kSecClass): kSecClassKey as CFString,
+            String(kSecAttrApplicationTag): tag as CFString,
+            ]
+        
+        let result: Data?
+        
+        switch SecItemCopyMatching(query as CFDictionary, &keyRef) {
+        case noErr:
+            result = keyRef as? Data
+        default:
+            result = nil
+        }
+        return result
     }
     
     func createUser(ks: GethKeyStore, password: String) -> GethAccount {
